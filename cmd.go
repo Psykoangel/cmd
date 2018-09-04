@@ -59,6 +59,7 @@ import (
 // To create a new Cmd, call NewCmd or NewCmdOptions.
 type Cmd struct {
 	Name   string
+    Dir    string
 	Args   []string
 	Env    []string
 	Stdout chan string // streaming STDOUT if enabled, else nil (see Options)
@@ -96,6 +97,7 @@ type Status struct {
 	Cmd      string
 	PID      int
 	Complete bool     // false if stopped or signaled
+    Stopped  bool     // true if command was stopped using the Stop() function
 	Exit     int      // exit code of process
 	Error    error    // Go error
 	StartTs  int64    // Unix ts (nanoseconds), zero if Cmd not started
@@ -152,6 +154,14 @@ func NewCmdOptions(options Options, name string, args ...string) *Cmd {
 	return out
 }
 
+// SetDir allows to complete the Cmd by adding a specific working directory to execute in.
+// This only affects the Cmd BEFORE it starts.
+func (c *Cmd) SetDir(dir string) {
+        c.Lock()
+        defer c.Unlock()
+        c.Dir = dir
+}
+
 // Start starts the command and immediately returns a channel that the caller
 // can use to receive the final Status of the command when it ends. The caller
 // can start the command and wait like,
@@ -195,7 +205,8 @@ func (c *Cmd) Stop() error {
 	}
 
 	// Flag that command was stopped, it didn't complete. This results in
-	// status.Complete = false
+	// status.Complete = false, but status.Stopped = true indicates that it has been
+    // manually stopped.
 	c.stopped = true
 
 	// Signal the process group (-pid), not just the process, so that the process
@@ -306,6 +317,11 @@ func (c *Cmd) run() {
 	// is nil, use the current process' environment.
 	cmd.Env = c.Env
 
+    // Set a specified working directory for the command.
+    // If Dir is an empty string, the current working directory of the parent
+    // process will be taken as default.
+    cmd.Dir = c.Dir
+
 	// //////////////////////////////////////////////////////////////////////
 	// Start command
 	// //////////////////////////////////////////////////////////////////////
@@ -368,7 +384,9 @@ func (c *Cmd) run() {
 	c.Lock()
 	if !c.stopped && !signaled {
 		c.status.Complete = true
-	}
+	} else if c.stopped && signaled {
+        c.status.Stopped = true
+    }
 	c.status.Runtime = now.Sub(c.startTime).Seconds()
 	c.status.StopTs = now.UnixNano()
 	c.status.Exit = exitCode
