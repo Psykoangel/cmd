@@ -199,8 +199,8 @@ func (c *Cmd) Stop() error {
 	defer c.Unlock()
 
 	// Nothing to stop if Start hasn't been called, or the proc hasn't started,
-	// or it's already done.
-	if c.statusChan == nil || !c.started || c.done {
+	// or it's already done or it's been manually stopped.
+	if c.statusChan == nil || !c.started || c.done || c.Stopped {
 		return nil
 	}
 
