@@ -200,7 +200,7 @@ func (c *Cmd) Stop() error {
 
 	// Nothing to stop if Start hasn't been called, or the proc hasn't started,
 	// or it's already done or it's been manually stopped.
-	if c.statusChan == nil || !c.started || c.done || c.status.Stopped {
+	if c.statusChan == nil || !c.started || c.stopped || c.done {
 		return nil
 	}
 
@@ -240,6 +240,8 @@ func (c *Cmd) Status() Status {
 	if c.statusChan == nil || !c.started {
 		return c.status
 	}
+
+    c.status.Stopped = c.stopped
 
 	if c.done {
 		// No longer running
@@ -341,6 +343,7 @@ func (c *Cmd) run() {
 	c.startTime = now              // command is running
 	c.status.PID = cmd.Process.Pid // command is running
 	c.status.StartTs = now.UnixNano()
+    c.status.Stopped = false
 	c.started = true
 	c.Unlock()
 
@@ -384,9 +387,7 @@ func (c *Cmd) run() {
 	c.Lock()
 	if !c.stopped && !signaled {
 		c.status.Complete = true
-	} else if c.stopped && signaled {
-        c.status.Stopped = true
-    }
+	}
 	c.status.Runtime = now.Sub(c.startTime).Seconds()
 	c.status.StopTs = now.UnixNano()
 	c.status.Exit = exitCode
